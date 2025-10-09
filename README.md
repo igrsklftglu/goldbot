@@ -1,0 +1,2 @@
+# goldbot
+goldbot düzenleme
