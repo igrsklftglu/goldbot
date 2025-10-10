@@ -67,11 +67,11 @@ def run_master_diagnostic():
         guard = compute_sl_tp_guard(
             symbol="GOLD",
             direction="LONG",
-            entry=tick.ask,  
-            sl=None, 
-            tp=None, 
-            si=si, 
-            tick=tick
+            entry=tick.ask,
+            sl=None,
+            tp=None,
+            si=si,
+            tick=tick,
         )
         if guard:
             results.append("[OK] SL/TP Guard çalışıyor")
@@ -201,7 +201,6 @@ def run_master_diagnostic():
     for r in results:
         print(r)
     print("==============================\n")
-
 
 def now_tr():
     """Türkiye saati (Europe/Istanbul) döner"""
@@ -647,12 +646,12 @@ def compute_sl_tp_guard(
     entry: float,
     sl: float = None,
     tp: float = None,
-    si = None,
-    tick = None
+    si=None,
+    tick=None,
 ) -> dict:
     """
     SL/TP değerlerini güvenli şekilde hesaplar ve kontrol eder.
-    
+
     Args:
         symbol (str): İşlem sembolü (örn: "GOLD")
         direction (str): İşlem yönü ("LONG" veya "SHORT")
@@ -661,7 +660,7 @@ def compute_sl_tp_guard(
         tp (float, optional): Take Profit fiyatı. Varsayılan None.
         si: Sembol bilgisi. Varsayılan None.
         tick: Anlık fiyat bilgisi. Varsayılan None.
-    
+
     Returns:
         dict: SL/TP ve diğer bilgileri içeren sözlük
     """
@@ -673,7 +672,7 @@ def compute_sl_tp_guard(
         # Sembol bilgilerini al
         if si is None:
             si = mt5.symbol_info(symbol)
-        
+
         # Temel değerleri ayarla
         digits = getattr(si, "digits", 2) if si else 2
         point = getattr(si, "point", 0.01) if si else 0.01
@@ -684,11 +683,11 @@ def compute_sl_tp_guard(
         try:
             rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, 100)
             df = pd.DataFrame(rates)
-            atr = df['high'].rolling(14).max() - df['low'].rolling(14).min()
+            atr = df["high"].rolling(14).max() - df["low"].rolling(14).min()
             atr = float(atr.iloc[-1])
             debug_log(f"[{ts}] 📏 ATR: {atr}")
         except Exception as e:
-            atr = pip * 10 # Varsayılan değer
+            atr = pip * 10  # Varsayılan değer
             debug_log(f"[{ts}] ⚠️ ATR hesaplanamadı: {e}, varsayılan: {atr}")
 
         # Yuvarlama fonksiyonu
@@ -705,7 +704,7 @@ def compute_sl_tp_guard(
             if sl is None or sl >= entry:
                 sl = entry - (atr * 1.5)
                 debug_log(f"[{ts}] ⚠️ LONG SL düzeltildi: {sl}")
-            
+
             if tp is None or tp <= entry:
                 tp = entry + (atr * 2.0)
                 debug_log(f"[{ts}] ⚠️ LONG TP düzeltildi: {tp}")
@@ -715,7 +714,7 @@ def compute_sl_tp_guard(
             if sl is None or sl <= entry:
                 sl = entry + (atr * 1.5)
                 debug_log(f"[{ts}] ⚠️ SHORT SL düzeltildi: {sl}")
-            
+
             if tp is None or tp >= entry:
                 tp = entry - (atr * 2.0)
                 debug_log(f"[{ts}] ⚠️ SHORT TP düzeltildi: {tp}")
@@ -741,7 +740,7 @@ def compute_sl_tp_guard(
             "point": point,
             "digits": digits,
             "atr": atr,
-            "rr_ratio": rr
+            "rr_ratio": rr,
         }
 
     except Exception as e:
@@ -755,7 +754,7 @@ def compute_sl_tp_guard(
             "point": 0.01,
             "digits": 2,
             "atr": 0.0,
-            "rr_ratio": 0.0
+            "rr_ratio": 0.0,
         }
 
 
