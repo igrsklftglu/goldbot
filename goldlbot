@@ -110,7 +110,9 @@ def run_master_diagnostic():
         tf = "M15"
         entry = 1900.0
         tp = 1910.0
-        if check_tp_bucket(tf, entry, tp):
+        symbol = "GOLD" # Symbol parametresi eklendi
+        ok = check_tp_bucket(tf , entry, tp, symbol) # Dört parametre ile çağırıyoruz
+        if ok:
             results.append("[OK] TP kovası geçerli")
         else:
             results.append("[FAIL] TP kovası geçersiz")
