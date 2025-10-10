@@ -636,17 +636,14 @@ tp_price = float(res.get("tp_price") or 0.0)
 
 
 def compute_sl_tp_guard(
-    symbol,
-    direction,
-    entry,
-    sl,
-    tp,
-    si=None,
-    tick=None,
-    *,
-    levels: dict | None = None,
-    atr_pips: float | None = None,
-):
+    symbol: str,
+    direction: str,
+    entry: float,
+    sl: float = None,
+    tp: float = None,
+    si = None,
+    tick = None
+) -> dict:
     """
     SL/TP değerlerini güvenli şekilde hesaplar ve kontrol eder.
     
@@ -654,107 +651,106 @@ def compute_sl_tp_guard(
         symbol (str): İşlem sembolü (örn: "GOLD")
         direction (str): İşlem yönü ("LONG" veya "SHORT")
         entry (float): Giriş fiyatı
-        sl (float): Stop Loss fiyatı
-        tp (float): Take Profit fiyatı
-        si: Sembol bilgisi
-        tick: Anlık fiyat bilgisi
-        levels: Destek/direnç seviyeleri
-        atr_pips: ATR değeri (pip cinsinden)
+        sl (float, optional): Stop Loss fiyatı. Varsayılan None.
+        tp (float, optional): Take Profit fiyatı. Varsayılan None.
+        si: Sembol bilgisi. Varsayılan None.
+        tick: Anlık fiyat bilgisi. Varsayılan None.
+    
+    Returns:
+        dict: SL/TP ve diğer bilgileri içeren sözlük
     """
-    from math import isnan
-    
-    # --- Debug logları için timestamp ---
-    ts = now_tr().strftime("%Y-%m-%d %H:%M:%S")
-    debug_log(f"[{ts}] 🔄 compute_sl_tp_guard başladı -> {direction} @ {entry}")
-
-    # --- Sembol bilgisi ---
-    digits = getattr(si, "digits", 2) if si else 2
-    point = getattr(si, "point", 0.01) if si else 0.01
-    pip_div = float(os.getenv("POINTS_PER_PIP", "1") or 1.0)
-    pip = point * pip_div
-    
-    debug_log(f"[{ts}] 📊 Sembol bilgileri: digits={digits}, point={point}, pip={pip}")
-
-    # --- ATR hesaplama ---
     try:
-        rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, 100)
-        df = pd.DataFrame(rates)
-        atr = df['high'].rolling(14).max() - df['low'].rolling(14).min()
-        atr = atr.iloc[-1]
-        debug_log(f"[{ts}] 📏 ATR hesaplandı: {atr}")
-    except Exception as e:
-        atr = pip * 10 # default değer
-        debug_log(f"[{ts}] ⚠️ ATR hesaplanamadı, varsayılan: {atr}, hata: {e}")
+        # Timestamp için
+        ts = now_tr().strftime("%Y-%m-%d %H:%M:%S")
+        debug_log(f"[{ts}] 🔄 compute_sl_tp_guard başladı: {direction} @ {entry}")
 
-    # --- Güvenli yuvarlama ---
-    def rnd(x):
-        if x is None:
-            return None
+        # Sembol bilgilerini al
+        if si is None:
+            si = mt5.symbol_info(symbol)
+        
+        # Temel değerleri ayarla
+        digits = getattr(si, "digits", 2) if si else 2
+        point = getattr(si, "point", 0.01) if si else 0.01
+        pip_div = float(os.getenv("POINTS_PER_PIP", "1") or 1.0)
+        pip = point * pip_div
+
+        # ATR hesaplama
         try:
-            if isinstance(x, float) and isnan(x):
+            rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, 100)
+            df = pd.DataFrame(rates)
+            atr = df['high'].rolling(14).max() - df['low'].rolling(14).min()
+            atr = float(atr.iloc[-1])
+            debug_log(f"[{ts}] 📏 ATR: {atr}")
+        except Exception as e:
+            atr = pip * 10 # Varsayılan değer
+            debug_log(f"[{ts}] ⚠️ ATR hesaplanamadı: {e}, varsayılan: {atr}")
+
+        # Yuvarlama fonksiyonu
+        def round_price(price):
+            if price is None:
                 return None
-        except Exception:
-            pass
-        q = 10**digits
-        return float(int(round(x * q)) / q)
+            return round(float(price), digits)
 
-    side_up = (direction or "LONG").upper()
-    debug_log(f"[{ts}] 👉 İşlem yönü: {side_up}")
+        side = direction.upper()
+        debug_log(f"[{ts}] Yön: {side}, Entry: {entry}")
 
-    # --- Başlangıç değerlerini logla ---
-    debug_log(f"[{ts}] 📝 Başlangıç değerleri: entry={entry}, sl={sl}, tp={tp}")
+        # LONG pozisyonlar için SL/TP ayarla
+        if side == "LONG":
+            if sl is None or sl >= entry:
+                sl = entry - (atr * 1.5)
+                debug_log(f"[{ts}] ⚠️ LONG SL düzeltildi: {sl}")
+            
+            if tp is None or tp <= entry:
+                tp = entry + (atr * 2.0)
+                debug_log(f"[{ts}] ⚠️ LONG TP düzeltildi: {tp}")
 
-    # === LONG pozisyonlar için SL/TP düzeltme ===
-    if side_up == "LONG":
-        # SL kontrolü
-        if sl is None or sl >= entry:
-            old_sl = sl
-            sl = entry - (atr * 1.5) # ATR'nin 1.5 katı kadar altında
-            debug_log(f"[{ts}] ⚠️ LONG SL düzeltildi: {old_sl} -> {sl}")
-        
-        # TP kontrolü
-        if tp is None or tp <= entry:
-            old_tp = tp
-            tp = entry + (atr * 2) # ATR'nin 2 katı kadar üstünde
-            debug_log(f"[{ts}] ⚠️ LONG TP düzeltildi: {old_tp} -> {tp}")
+        # SHORT pozisyonlar için SL/TP ayarla
+        elif side == "SHORT":
+            if sl is None or sl <= entry:
+                sl = entry + (atr * 1.5)
+                debug_log(f"[{ts}] ⚠️ SHORT SL düzeltildi: {sl}")
+            
+            if tp is None or tp >= entry:
+                tp = entry - (atr * 2.0)
+                debug_log(f"[{ts}] ⚠️ SHORT TP düzeltildi: {tp}")
 
-    # === SHORT pozisyonlar için SL/TP düzeltme ===
-    elif side_up == "SHORT":
-        # SL kontrolü
-        if sl is None or sl <= entry:
-            old_sl = sl
-            sl = entry + (atr * 1.5) # ATR'nin 1.5 katı kadar üstünde
-            debug_log(f"[{ts}] ⚠️ SHORT SL düzeltildi: {old_sl} -> {sl}")
-        
-        # TP kontrolü
-        if tp is None or tp >= entry:
-            old_tp = tp
-            tp = entry - (atr * 2) # ATR'nin 2 katı kadar altında
-            debug_log(f"[{ts}] ⚠️ SHORT TP düzeltildi: {old_tp} -> {tp}")
-
-    # --- Son değerleri logla ---
-    debug_log(f"[{ts}] ✅ Son değerler: entry={rnd(entry)}, sl={rnd(sl)}, tp={rnd(tp)}")
-
-    # Risk/Ödül oranını hesapla ve logla
-    try:
+        # Risk/Ödül oranını hesapla
         risk = abs(entry - sl)
         reward = abs(tp - entry)
         rr = reward / risk if risk > 0 else 0
         debug_log(f"[{ts}] 📊 Risk/Ödül oranı: {rr:.2f}")
+
+        # Son kontroller
+        entry = round_price(entry)
+        sl = round_price(sl)
+        tp = round_price(tp)
+
+        debug_log(f"[{ts}] ✅ Son değerler -> Entry: {entry}, SL: {sl}, TP: {tp}")
+
+        return {
+            "price": entry,
+            "sl_price": sl,
+            "tp_price": tp,
+            "pip": pip,
+            "point": point,
+            "digits": digits,
+            "atr": atr,
+            "rr_ratio": rr
+        }
+
     except Exception as e:
-        debug_log(f"[{ts}] ⚠️ RR hesaplanamadı: {e}")
-
-    return {
-        "price": rnd(entry),
-        "sl_price": rnd(sl),
-        "tp_price": rnd(tp),
-        "pip": pip,
-        "point": point,
-        "digits": digits,
-        "atr": atr,
-        "rr_ratio": rr
-    }
-
+        debug_log(f"[{ts}] 🚨 compute_sl_tp_guard HATA: {str(e)}")
+        # Hata durumunda güvenli değerler döndür
+        return {
+            "price": entry if entry else 0.0,
+            "sl_price": 0.0,
+            "tp_price": 0.0,
+            "pip": 0.01,
+            "point": 0.01,
+            "digits": 2,
+            "atr": 0.0,
+            "rr_ratio": 0.0
+        }
 
 
 # kabul edilen alanlar
