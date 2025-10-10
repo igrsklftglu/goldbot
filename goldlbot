@@ -65,7 +65,13 @@ def run_master_diagnostic():
         si = mt5.symbol_info("GOLD")
         tick = mt5.symbol_info_tick("GOLD")
         guard = compute_sl_tp_guard(
-            "GOLD", "LONG", tick.ask, tick.ask, None, None, si, tick
+            symbol="GOLD",
+            direction="LONG",
+            entry=tick.ask,  
+            sl=None, 
+            tp=None, 
+            si=si, 
+            tick=tick
         )
         if guard:
             results.append("[OK] SL/TP Guard çalışıyor")
