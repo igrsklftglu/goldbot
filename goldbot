@@ -81,14 +81,15 @@ def run_master_diagnostic():
         results.append(f"[FAIL] SL/TP Guard exception -> {e}")
 
     try:
-        entry = 3880.0  # test için sahte değer
-        tp = 3890.0
+        entry = 100.0  # test için sahte değer
+        tp = 150.0
+        tf = "M15"
         symbol = "GOLD"
         ok = check_tp_bucket("M15", entry, tp, symbol)
-        if ok:
-            print("[OK] TP kovası çalışıyor")
+        if check_tp_bucket(tf, entry, tp, symbol):
+            print("[OK] TP Kovası başarılı.")
         else:
-            print("[FAIL] TP kovası hata: False döndü")
+            print("[HATA] TP Kovası başarısız.")
     except Exception as e:
         print(f"[FAIL] TP kovası exception -> {e}")
 
@@ -109,9 +110,16 @@ def run_master_diagnostic():
     try:
         tf = "M15"
         entry = 1900.0
-        tp = 1910.0
-        symbol = "GOLD" # Symbol parametresi eklendi
-        ok = check_tp_bucket(tf , entry, tp, symbol) # Dört parametre ile çağırıyoruz
+        tp = 1910.0 + (100 * 0.01)  # 100 pip mesafe için
+        symbol = "GOLD"
+
+        print(f"\n=== TP Kovası Testi ===")
+        print(f"Timeframe: {tf}")
+        print(f"Entry: {entry}")
+        print(f"TP: {tp}")
+        print(f"Beklenen pip mesafesi: 100+")
+
+        ok = check_tp_bucket(tf, entry, tp, symbol)
         if ok:
             results.append("[OK] TP kovası geçerli")
         else:
@@ -203,6 +211,7 @@ def run_master_diagnostic():
     for r in results:
         print(r)
     print("==============================\n")
+
 
 def now_tr():
     """Türkiye saati (Europe/Istanbul) döner"""
@@ -1718,38 +1727,44 @@ def is_candle_closing(tf, df: pd.DataFrame):
     return now >= candle_close_time - timedelta(seconds=60)
 
 
-def check_tp_bucket(tf: str, entry: float, tp: float, symbol: str) -> bool:
-    """
-    TF bazlı TP pip kovası kontrolü.
-    XAUUSD için 1 pip = 0.01 (PIP_VALUE).
-    Aralık kuralı: [low, high) → alt sınır dahil, üst sınır hariç.
-    Sınırda kalan 199.999999 gibi değerler için küçük bir tolerans (EPS) kullanılır.
-    """
-    EPS = 1e-6  # sınır toleransı
-
-    # Kovayı al
+def check_tp_bucket(tf, entry, tp, symbol):
     try:
-        low, high = pip_buckets[tf]
-    except KeyError:
-        debug_log(f"[TP-KOVASI] Tanımsız TF: {tf}")
+        # Sembol bilgilerini al
+        si = mt5.symbol_info(symbol)
+        if not si:
+            print(f"[HATA] {symbol} için sembol bilgisi alınamadı")
+            return False
+
+        # Pip değerini hesapla
+        point = getattr(si, "point", 0.01)
+        pip_div = float(os.getenv("POINTS_PER_PIP", "1") or 1.0)
+        pip = point * pip_div
+
+        # Pip mesafesini hesapla
+        pip_distance = abs(tp - entry) / pip
+
+        # Debug log
+        print(
+            f"[DEBUG] Entry: {entry}, TP: {tp}, Point: {point}, Pip Div: {pip_div}, Pip: {pip}"
+        )
+        print(f"[DEBUG] Pip Mesafesi: {pip_distance:.2f}")
+        print(f"[DEBUG] Beklenen aralık: {pip_buckets[tf]}")
+
+        # Pip aralığını kontrol et
+        min_pips, max_pips = pip_buckets.get(tf, (0, float("inf")))
+        if min_pips <= pip_distance <= max_pips:
+            print(f"[OK] {tf} için TP mesafesi ({pip_distance:.2f} pip) geçerli")
+            return True
+        else:
+            print(
+                f"[HATA] TP Kovası HATASI: {tf} zaman dilimi için TP mesafesi {pip_distance:.2f} pip. "
+                f"Beklenen aralık: {min_pips}-{max_pips} pip arası. Giriş: {entry}, TP: {tp}"
+            )
+            return False
+
+    except Exception as e:
+        print(f"[HATA] check_tp_bucket exception: {str(e)}")
         return False
-
-    # Hedef pips
-    si = si if ("si" in locals() and si) else mt5.symbol_info(symbol)
-    entry = float(locals().get("entry", locals().get("entry_price", 0.0)) or 0.0)
-    tp = float(locals().get("tp", locals().get("tp_price", 0.0)) or 0.0)
-
-    hedef_pip = round(_abs_pips(entry, tp, si), 1)
-    # Üyelik testi (üst sınır hariç)
-    inside = (hedef_pip + EPS) >= low and (hedef_pip - EPS) < high
-
-    # Debug
-    debug_log(
-        f"[TP-KOVASI] tf={tf} | hedef_pip={hedef_pip:.1f} | aralık=({low},{high}) | "
-        f"entry={entry:.2f} tp={tp:.2f} -> {'OK' if inside else 'RED'}"
-    )
-
-    return inside
 
 
 def choose_target_pips(tf: str, mode: str = "fixed") -> int | None:
