@@ -81,8 +81,8 @@ def run_master_diagnostic():
         results.append(f"[FAIL] SL/TP Guard exception -> {e}")
 
     try:
-        entry = 100.0  # test için sahte değer
-        tp = 150.0
+        entry = 1900.0
+        tp = 1902.0  # Aralık: 100 pip mesafe
         tf = "M15"
         symbol = "GOLD"
         ok = check_tp_bucket("M15", entry, tp, symbol)
@@ -110,7 +110,7 @@ def run_master_diagnostic():
     try:
         tf = "M15"
         entry = 1900.0
-        tp = 1910.0 + (100 * 0.01)  # 100 pip mesafe için
+        tp = 1902.0  # 100 pip mesafe için
         symbol = "GOLD"
 
         print(f"\n=== TP Kovası Testi ===")
@@ -1729,28 +1729,30 @@ def is_candle_closing(tf, df: pd.DataFrame):
 
 def check_tp_bucket(tf, entry, tp, symbol):
     try:
-        # Sembol bilgilerini al
+        # MetaTrader5 sembol bilgilerini al
         si = mt5.symbol_info(symbol)
         if not si:
             print(f"[HATA] {symbol} için sembol bilgisi alınamadı")
             return False
+        # Sembol bilgilerini debug mesajında göster
+        print(f"[DEBUG] Sembol Bilgileri: {si}")
 
         # Pip değerini hesapla
-        point = getattr(si, "point", 0.01)
-        pip_div = float(os.getenv("POINTS_PER_PIP", "1") or 1.0)
-        pip = point * pip_div
+        point = getattr(si, "point", 0.01)  # Sembolün pip değerini al
+        pip_div = float(os.getenv("POINTS_PER_PIP", "1") or 1.0)  # Pip oranı
+        pip = point * pip_div  # Pip hesaplama
 
         # Pip mesafesini hesapla
         pip_distance = abs(tp - entry) / pip
 
-        # Debug log
+        # Debug mesajları
         print(
             f"[DEBUG] Entry: {entry}, TP: {tp}, Point: {point}, Pip Div: {pip_div}, Pip: {pip}"
         )
         print(f"[DEBUG] Pip Mesafesi: {pip_distance:.2f}")
         print(f"[DEBUG] Beklenen aralık: {pip_buckets[tf]}")
 
-        # Pip aralığını kontrol et
+        # Pip mesafesini kontrol et
         min_pips, max_pips = pip_buckets.get(tf, (0, float("inf")))
         if min_pips <= pip_distance <= max_pips:
             print(f"[OK] {tf} için TP mesafesi ({pip_distance:.2f} pip) geçerli")
